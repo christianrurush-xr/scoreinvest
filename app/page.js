@@ -147,4 +147,160 @@ export default function Home() {
     <div style={{ minHeight: '100vh', maxWidth: 600, margin: '0 auto' }}>
 
       <div style={{
-        background: 'linear-gradient(180deg, var(--bg
+        background: 'linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%)',
+        borderBottom: '1px solid var(--border)', padding: '18px 20px',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 800, letterSpacing: '-0.5px' }}>
+              <span style={{ color: 'var(--green)' }}>●</span> ScoreInvest
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, textTransform: 'capitalize' }}>
+              {today}
+            </div>
+          </div>
+          <button onClick={() => setShowPro(!showPro)} style={{
+            background: 'linear-gradient(135deg, var(--gold) 0%, #e8a020 100%)',
+            border: 'none', borderRadius: 6, padding: '6px 14px',
+            fontSize: 10, fontWeight: 700, color: '#000',
+            fontFamily: 'var(--font-display)', letterSpacing: '0.5px',
+          }}>PRO $9.99/mes</button>
+        </div>
+
+        {isDemo && (
+          <div style={{
+            marginTop: 10, background: '#ffaa3310', border: '1px solid #ffaa3322',
+            borderRadius: 6, padding: '6px 10px', fontSize: 10, color: 'var(--yellow)',
+          }}>
+            📊 Modo demo — Agrega tu API key de Financial Modeling Prep para datos en tiempo real
+          </div>
+        )}
+
+        {showPro && (
+          <div style={{
+            marginTop: 14, background: 'var(--bg-card)', border: '1px solid #f0c04033',
+            borderRadius: 10, padding: 16, animation: 'fadeIn 0.2s ease',
+          }}>
+            <div style={{ fontSize: 15, fontWeight: 700, fontFamily: 'var(--font-display)', color: 'var(--gold)', marginBottom: 8 }}>
+              ScoreInvest PRO
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+              ✦ Análisis diario de las 100 empresas del Nasdaq<br />
+              ✦ Alertas cuando el score cambia drásticamente<br />
+              ✦ Desglose completo de las 12 variables<br />
+              ✦ Historial de scores por empresa<br />
+              ✦ Detector GAAP vs Non-GAAP<br />
+              ✦ Acceso al grupo privado
+            </div>
+            <div style={{ fontSize: 9, color: 'var(--text-dark)', marginTop: 10, lineHeight: 1.5 }}>
+              ⚠️ No constituye asesoría financiera. Siempre investiga por tu cuenta.
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+          <div style={{ flex: 1, background: '#00ff8808', border: '1px solid #00ff8818', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--green)', fontFamily: 'var(--font-display)' }}>{buyCount}</div>
+            <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>COMPRA</div>
+          </div>
+          <div style={{ flex: 1, background: '#ffaa3308', border: '1px solid #ffaa3318', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--yellow)', fontFamily: 'var(--font-display)' }}>{holdCount}</div>
+            <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>MANTENER</div>
+          </div>
+          <div style={{ flex: 1, background: '#ff334408', border: '1px solid #ff334418', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--red)', fontFamily: 'var(--font-display)' }}>{avoidCount}</div>
+            <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>EVITAR</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
+        <input
+          type="text" placeholder="Buscar empresa o ticker..."
+          value={search} onChange={e => setSearch(e.target.value)}
+          style={{
+            width: '100%', background: 'var(--bg-card)', border: '1px solid var(--border)',
+            borderRadius: 8, padding: '9px 12px', color: 'var(--text-primary)',
+            fontSize: 12, outline: 'none', marginBottom: 10,
+          }}
+        />
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {[
+            { key: 'all', label: 'Todas', color: 'var(--text-secondary)' },
+            { key: 'buy', label: '▲ Compra', color: 'var(--green)' },
+            { key: 'hold', label: '● Mantener', color: 'var(--yellow)' },
+            { key: 'avoid', label: '▼ Evitar', color: 'var(--red)' },
+          ].map(f => (
+            <button key={f.key} onClick={() => { setFilter(f.key); setSelected(null); }} style={{
+              background: filter === f.key ? 'var(--bg-hover)' : 'transparent',
+              border: `1px solid ${filter === f.key ? f.color : 'var(--border)'}`,
+              color: filter === f.key ? f.color : 'var(--text-muted)',
+              borderRadius: 6, padding: '5px 12px', fontSize: 10,
+            }}>{f.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {detail && <CompanyDetail company={detail} onClose={() => setSelected(null)} />}
+
+      <div style={{ padding: '8px 20px 24px' }}>
+        <div style={{ fontSize: 9, color: 'var(--text-dark)', marginBottom: 10 }}>
+          {filtered.length} empresas · ordenadas por score
+        </div>
+
+        {filtered.map((stock, idx) => (
+          <div
+            key={stock.ticker}
+            onClick={() => setSelected(selected === stock.ticker ? null : stock.ticker)}
+            style={{
+              display: 'grid', gridTemplateColumns: '28px 1fr 65px 48px',
+              alignItems: 'center', padding: '11px 10px', gap: 8,
+              borderBottom: '1px solid var(--bg-secondary)', cursor: 'pointer',
+              background: selected === stock.ticker ? 'var(--bg-card)' : 'transparent',
+              borderRadius: selected === stock.ticker ? 8 : 0,
+              transition: 'background 0.15s',
+            }}
+          >
+            <div style={{ fontSize: 10, fontWeight: 600, color: idx < 3 ? 'var(--gold)' : 'var(--text-dark)', textAlign: 'center' }}>
+              {idx < 3 ? ['🥇', '🥈', '🥉'][idx] : `#${idx + 1}`}
+            </div>
+
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-display)' }}>{stock.ticker}</span>
+                <span style={{
+                  fontSize: 8, padding: '1px 6px', borderRadius: 3,
+                  background: stock.signalColor + '18', color: stock.signalColor, fontWeight: 600,
+                }}>{stock.signal}</span>
+              </div>
+              <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 1 }}>{stock.name}</div>
+            </div>
+
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 12, fontWeight: 500 }}>${stock.price?.toFixed(2)}</div>
+              <div style={{ fontSize: 9, color: parseFloat(stock.upside) > 0 ? 'var(--green)' : 'var(--red)' }}>
+                {parseFloat(stock.upside) > 0 ? '▲' : '▼'} {stock.upside}%
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'center' }}>
+              <div style={{
+                fontSize: 17, fontWeight: 800, color: stock.signalColor,
+                fontFamily: 'var(--font-display)',
+              }}>{stock.score}</div>
+              <div style={{ fontSize: 7, color: 'var(--text-dark)' }}>pts</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
+        <div style={{ fontSize: 9, color: 'var(--text-dark)', lineHeight: 1.6 }}>
+          ScoreInvest · Modelo de 12 variables · {companies.length} empresas analizadas<br />
+          ⚠️ No constituye asesoría financiera. Invertir conlleva riesgos.<br />
+          Siempre consulta con un profesional antes de tomar decisiones de inversión.
+        </div>
+      </div>
+    </div>
+  );
+}
