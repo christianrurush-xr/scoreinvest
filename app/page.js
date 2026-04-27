@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { fetchStockQuotes, fetchFinancialRatios, fetchIncomeGrowth, fetchInsiderTrading, fetchEarningsSurprises, NASDAQ_100 } from '../lib/api';
+import { useState, useEffect } from 'react';
+import { fetchStockQuotes, fetchFinancialRatios, fetchIncomeGrowth, fetchKeyMetrics, NASDAQ_100 } from '../lib/api';
 import { calculateScore } from '../lib/scoring';
 import ScoreGauge from '../components/ScoreGauge';
 import CompanyDetail from '../components/CompanyDetail';
 
-// ── Fallback demo data (used when no API key is set) ──
 const DEMO_DATA = [
   { ticker: 'NVDA', name: 'NVIDIA Corp', sector: 'Semiconductors', price: 135.20, pe: 55.2, peg: 0.92, fcfGrowth: 142, revenueGrowth: 122, roic: 68.5, debtEquity: 0.41, insiderBuy: true, rsi: 62, shortInterest: 1.8, analystTarget: 175, earningsSurprise: 12.5, margin: 55.8 },
   { ticker: 'META', name: 'Meta Platforms', sector: 'Social / AI', price: 595.40, pe: 25.8, peg: 0.75, fcfGrowth: 35, revenueGrowth: 22, roic: 28.4, debtEquity: 0.28, insiderBuy: false, rsi: 64, shortInterest: 1.1, analystTarget: 650, earningsSurprise: 8.9, margin: 34.1 },
@@ -39,7 +38,6 @@ export default function Home() {
       const apiKey = process.env.NEXT_PUBLIC_FMP_API_KEY;
 
       if (!apiKey || apiKey === 'TU_API_KEY_AQUI') {
-        // No API key — use demo data
         const scored = DEMO_DATA.map(c => ({ ...c, ...calculateScore(c) }));
         setCompanies(scored.sort((a, b) => b.score - a.score));
         setIsDemo(true);
@@ -48,67 +46,62 @@ export default function Home() {
       }
 
       try {
-        // Fetch real quotes
         const quotes = await fetchStockQuotes(NASDAQ_100);
-        if (!quotes || !Array.isArray(quotes)) throw new Error('Bad response');
+        if (!quotes || !Array.isArray(quotes) || quotes.length === 0) throw new Error('No quotes');
 
-        // For each quote, try to get additional ratios
-        const enriched = await Promise.all(
-          quotes.slice(0, 50).map(async (q) => {
-            try {
-              const [ratios, growth, insider, surprises] = await Promise.all([
-                fetchFinancialRatios(q.symbol).catch(() => [{}]),
-                fetchIncomeGrowth(q.symbol).catch(() => [{}]),
-                fetchInsiderTrading(q.symbol).catch(() => []),
-                fetchEarningsSurprises(q.symbol).catch(() => [{}]),
-              ]);
+        const enriched = [];
+        const batch = quotes.slice(0, 50);
 
-              const r = ratios?.[0] || {};
-              const g = growth?.[0] || {};
-              const s = surprises?.[0] || {};
-              const buys = (insider || []).filter(t => t.transactionType === 'P-Purchase').length;
-              const sells = (insider || []).filter(t => t.transactionType === 'S-Sale').length;
+        for (let i = 0; i < batch.length; i++) {
+          const q = batch[i];
+          try {
+            const [ratios, growth, metrics] = await Promise.all([
+              fetchFinancialRatios(q.symbol).catch(() => [{}]),
+              fetchIncomeGrowth(q.symbol).catch(() => [{}]),
+              fetchKeyMetrics(q.symbol).catch(() => [{}]),
+            ]);
 
-              return {
-                ticker: q.symbol,
-                name: q.name,
-                sector: q.exchange || '',
-                price: q.price || 0,
-                change: q.changesPercentage || 0,
-                pe: q.pe || r.peRatioTTM || 0,
-                peg: r.pegRatioTTM || 0,
-                revenueGrowth: Math.round((g.growthRevenue || 0) * 100),
-                fcfGrowth: Math.round((g.growthFreeCashFlow || 0) * 100),
-                roic: Math.round((r.returnOnCapitalEmployedTTM || 0) * 100 * 10) / 10,
-                debtEquity: Math.round((r.debtEquityRatioTTM || 0) * 100) / 100,
-                insiderBuy: buys > sells,
-                rsi: 50, // RSI requires separate endpoint
-                shortInterest: 0,
-                analystTarget: q.priceAvg200 || q.price,
-                earningsSurprise: s.actualEarningResult && s.estimatedEarning
-                  ? Math.round(((s.actualEarningResult - s.estimatedEarning) / Math.abs(s.estimatedEarning)) * 100)
-                  : 0,
-                margin: Math.round((r.netProfitMarginTTM || 0) * 100 * 10) / 10,
-                marketCap: q.marketCap || 0,
-                volume: q.volume || 0,
-              };
-            } catch {
-              return {
-                ticker: q.symbol, name: q.name, price: q.price || 0,
-                pe: q.pe || 0, peg: 0, revenueGrowth: 0, fcfGrowth: 0,
-                roic: 0, debtEquity: 0, insiderBuy: false, rsi: 50,
-                shortInterest: 0, analystTarget: q.price, earningsSurprise: 0,
-                margin: 0, sector: '', change: q.changesPercentage || 0,
-              };
-            }
-          })
-        );
+            const r = ratios?.[0] || {};
+            const g = growth?.[0] || {};
+            const m = metrics?.[0] || {};
 
-        const scored = enriched.filter(Boolean).map(c => ({ ...c, ...calculateScore(c) }));
+            enriched.push({
+              ticker: q.symbol,
+              name: q.name || q.symbol,
+              sector: '',
+              price: q.price || 0,
+              change: q.changesPercentage || 0,
+              pe: q.pe || r.peRatioTTM || 0,
+              peg: r.pegRatioTTM || 0,
+              revenueGrowth: Math.round((g.growthRevenue || 0) * 100),
+              fcfGrowth: Math.round((g.growthFreeCashFlow || 0) * 100),
+              roic: Math.round((m.roicTTM || r.returnOnCapitalEmployedTTM || 0) * 100 * 10) / 10,
+              debtEquity: Math.round((r.debtEquityRatioTTM || 0) * 100) / 100,
+              insiderBuy: false,
+              rsi: 50,
+              shortInterest: 0,
+              analystTarget: q.price ? q.price * 1.1 : 0,
+              earningsSurprise: 0,
+              margin: Math.round((r.netProfitMarginTTM || 0) * 100 * 10) / 10,
+              marketCap: q.marketCap || 0,
+              volume: q.volume || 0,
+            });
+          } catch {
+            enriched.push({
+              ticker: q.symbol, name: q.name || q.symbol, price: q.price || 0,
+              pe: 0, peg: 0, revenueGrowth: 0, fcfGrowth: 0, roic: 0,
+              debtEquity: 0, insiderBuy: false, rsi: 50, shortInterest: 0,
+              analystTarget: q.price || 0, earningsSurprise: 0, margin: 0,
+              sector: '', change: 0,
+            });
+          }
+        }
+
+        const scored = enriched.map(c => ({ ...c, ...calculateScore(c) }));
         setCompanies(scored.sort((a, b) => b.score - a.score));
         setIsDemo(false);
       } catch (err) {
-        console.error('API Error, falling back to demo:', err);
+        console.error('API Error:', err);
         const scored = DEMO_DATA.map(c => ({ ...c, ...calculateScore(c) }));
         setCompanies(scored.sort((a, b) => b.score - a.score));
         setIsDemo(true);
@@ -153,167 +146,5 @@ export default function Home() {
   return (
     <div style={{ minHeight: '100vh', maxWidth: 600, margin: '0 auto' }}>
 
-      {/* ── HEADER ── */}
       <div style={{
-        background: 'linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%)',
-        borderBottom: '1px solid var(--border)', padding: '18px 20px',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 800, letterSpacing: '-0.5px' }}>
-              <span style={{ color: 'var(--green)' }}>●</span> ScoreInvest
-            </div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, textTransform: 'capitalize' }}>
-              {today}
-            </div>
-          </div>
-          <button onClick={() => setShowPro(!showPro)} style={{
-            background: 'linear-gradient(135deg, var(--gold) 0%, #e8a020 100%)',
-            border: 'none', borderRadius: 6, padding: '6px 14px',
-            fontSize: 10, fontWeight: 700, color: '#000',
-            fontFamily: 'var(--font-display)', letterSpacing: '0.5px',
-          }}>PRO $9.99/mes</button>
-        </div>
-
-        {isDemo && (
-          <div style={{
-            marginTop: 10, background: '#ffaa3310', border: '1px solid #ffaa3322',
-            borderRadius: 6, padding: '6px 10px', fontSize: 10, color: 'var(--yellow)',
-          }}>
-            📊 Modo demo — Agrega tu API key de Financial Modeling Prep para datos en tiempo real
-          </div>
-        )}
-
-        {showPro && (
-          <div style={{
-            marginTop: 14, background: 'var(--bg-card)', border: '1px solid #f0c04033',
-            borderRadius: 10, padding: 16, animation: 'fadeIn 0.2s ease',
-          }}>
-            <div style={{ fontSize: 15, fontWeight: 700, fontFamily: 'var(--font-display)', color: 'var(--gold)', marginBottom: 8 }}>
-              ScoreInvest PRO
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.8 }}>
-              ✦ Análisis diario de las 100 empresas del Nasdaq<br />
-              ✦ Alertas cuando el score cambia drásticamente<br />
-              ✦ Desglose completo de las 12 variables<br />
-              ✦ Historial de scores por empresa<br />
-              ✦ Detector GAAP vs Non-GAAP<br />
-              ✦ Acceso al grupo privado
-            </div>
-            <div style={{ fontSize: 9, color: 'var(--text-dark)', marginTop: 10, lineHeight: 1.5 }}>
-              ⚠️ No constituye asesoría financiera. Siempre investiga por tu cuenta.
-            </div>
-          </div>
-        )}
-
-        {/* Summary */}
-        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-          <div style={{ flex: 1, background: '#00ff8808', border: '1px solid #00ff8818', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--green)', fontFamily: 'var(--font-display)' }}>{buyCount}</div>
-            <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>COMPRA</div>
-          </div>
-          <div style={{ flex: 1, background: '#ffaa3308', border: '1px solid #ffaa3318', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--yellow)', fontFamily: 'var(--font-display)' }}>{holdCount}</div>
-            <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>MANTENER</div>
-          </div>
-          <div style={{ flex: 1, background: '#ff334408', border: '1px solid #ff334418', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--red)', fontFamily: 'var(--font-display)' }}>{avoidCount}</div>
-            <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>EVITAR</div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── SEARCH & FILTERS ── */}
-      <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
-        <input
-          type="text" placeholder="Buscar empresa o ticker..."
-          value={search} onChange={e => setSearch(e.target.value)}
-          style={{
-            width: '100%', background: 'var(--bg-card)', border: '1px solid var(--border)',
-            borderRadius: 8, padding: '9px 12px', color: 'var(--text-primary)',
-            fontSize: 12, outline: 'none', marginBottom: 10,
-          }}
-        />
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {[
-            { key: 'all', label: 'Todas', color: 'var(--text-secondary)' },
-            { key: 'buy', label: '▲ Compra', color: 'var(--green)' },
-            { key: 'hold', label: '● Mantener', color: 'var(--yellow)' },
-            { key: 'avoid', label: '▼ Evitar', color: 'var(--red)' },
-          ].map(f => (
-            <button key={f.key} onClick={() => { setFilter(f.key); setSelected(null); }} style={{
-              background: filter === f.key ? 'var(--bg-hover)' : 'transparent',
-              border: `1px solid ${filter === f.key ? f.color : 'var(--border)'}`,
-              color: filter === f.key ? f.color : 'var(--text-muted)',
-              borderRadius: 6, padding: '5px 12px', fontSize: 10,
-            }}>{f.label}</button>
-          ))}
-        </div>
-      </div>
-
-      {/* ── DETAIL CARD ── */}
-      {detail && <CompanyDetail company={detail} onClose={() => setSelected(null)} />}
-
-      {/* ── COMPANY LIST ── */}
-      <div style={{ padding: '8px 20px 24px' }}>
-        <div style={{ fontSize: 9, color: 'var(--text-dark)', marginBottom: 10 }}>
-          {filtered.length} empresas · ordenadas por score
-        </div>
-
-        {filtered.map((stock, idx) => (
-          <div
-            key={stock.ticker}
-            onClick={() => setSelected(selected === stock.ticker ? null : stock.ticker)}
-            style={{
-              display: 'grid', gridTemplateColumns: '28px 1fr 65px 48px',
-              alignItems: 'center', padding: '11px 10px', gap: 8,
-              borderBottom: '1px solid var(--bg-secondary)', cursor: 'pointer',
-              background: selected === stock.ticker ? 'var(--bg-card)' : 'transparent',
-              borderRadius: selected === stock.ticker ? 8 : 0,
-              transition: 'background 0.15s',
-            }}
-          >
-            <div style={{ fontSize: 10, fontWeight: 600, color: idx < 3 ? 'var(--gold)' : 'var(--text-dark)', textAlign: 'center' }}>
-              {idx < 3 ? ['🥇', '🥈', '🥉'][idx] : `#${idx + 1}`}
-            </div>
-
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-display)' }}>{stock.ticker}</span>
-                <span style={{
-                  fontSize: 8, padding: '1px 6px', borderRadius: 3,
-                  background: stock.signalColor + '18', color: stock.signalColor, fontWeight: 600,
-                }}>{stock.signal}</span>
-              </div>
-              <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 1 }}>{stock.name}</div>
-            </div>
-
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 12, fontWeight: 500 }}>${stock.price?.toFixed(2)}</div>
-              <div style={{ fontSize: 9, color: parseFloat(stock.upside) > 0 ? 'var(--green)' : 'var(--red)' }}>
-                {parseFloat(stock.upside) > 0 ? '▲' : '▼'} {stock.upside}%
-              </div>
-            </div>
-
-            <div style={{ textAlign: 'center' }}>
-              <div style={{
-                fontSize: 17, fontWeight: 800, color: stock.signalColor,
-                fontFamily: 'var(--font-display)',
-              }}>{stock.score}</div>
-              <div style={{ fontSize: 7, color: 'var(--text-dark)' }}>pts</div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* ── FOOTER ── */}
-      <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
-        <div style={{ fontSize: 9, color: 'var(--text-dark)', lineHeight: 1.6 }}>
-          ScoreInvest · Modelo de 12 variables · {companies.length} empresas analizadas<br />
-          ⚠️ No constituye asesoría financiera. Invertir conlleva riesgos.<br />
-          Siempre consulta con un profesional antes de tomar decisiones de inversión.
-        </div>
-      </div>
-    </div>
-  );
-}
+        background: 'linear-gradient(180deg, var(--bg
